@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:test_application_google_map/map/map_bloc.dart';
+import 'package:test_application_google_map/search/search_bloc.dart';
+
 import 'map/map_screen.dart';
 
 void main() => runApp(const MyApp());
@@ -9,14 +12,18 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const LatLng defaultLocation = LatLng(50.45069258864343, 30.52373692417302);
-    return MaterialApp(
-      title: 'Test Application',
-      theme: ThemeData(
-        colorSchemeSeed: Colors.green[700],
-        useMaterial3: true,
-      ),
-      home: const MapPage(initialPosition: defaultLocation),
-    );
+    return MultiBlocProvider(
+        providers: [
+          BlocProvider(create: (context) => MapBloc()),
+          BlocProvider(create: (context) => SearchBloc()),
+        ],
+        child: MaterialApp(
+          title: 'Test Application',
+          theme: ThemeData(
+            colorSchemeSeed: Colors.green[700],
+            useMaterial3: true,
+          ),
+          home: const MapPage(),
+        ));
   }
 }

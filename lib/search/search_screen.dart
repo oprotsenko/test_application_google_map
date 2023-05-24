@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:google_place/google_place.dart';
-import 'package:test_application_google_map/.env.dart';
+import 'package:test_application_google_map/map/map_bloc.dart';
 import 'package:test_application_google_map/map/map_screen.dart';
+import 'package:test_application_google_map/search/search_bloc.dart';
 
 class SearchPage extends StatefulWidget {
   const SearchPage({super.key});
@@ -13,151 +13,114 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
-  final _fromSearchController = TextEditingController();
-  final _toSearchController = TextEditingController();
-
-  late GooglePlace _googlePlace;
-  late FocusNode _originFocusNode;
-  late FocusNode _destFocusNode;
-
-  List<AutocompletePrediction> predictions = [];
-  DetailsResult? _origin;
-  DetailsResult? _dest;
-
-  @override
-  void initState() {
-    super.initState();
-    _googlePlace = GooglePlace(googleApiKey);
-    _originFocusNode = FocusNode();
-    _destFocusNode = FocusNode();
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
-    _originFocusNode.dispose();
-    _destFocusNode.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    var bloc = context.read<SearchBloc>();
     return Scaffold(
       appBar: AppBar(),
-      body: Column(children: [
-        TextField(
-          controller: _fromSearchController,
-          focusNode: _originFocusNode,
-          style: const TextStyle(fontSize: 24),
-          decoration: InputDecoration(
-              hintText: 'from:',
-              suffixIcon: _fromSearchController.text.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        setState(() {
-                          predictions = [];
-                          _fromSearchController.clear();
-                        });
-                      },
-                      icon: const Icon(Icons.clear_outlined))
-                  : null),
-          onChanged: (value) {
-            if (value.isNotEmpty) {
-              _autoCompleteSearch(value);
-            } else {}
-          },
-        ),
-        TextField(
-          controller: _toSearchController,
-          focusNode: _destFocusNode,
-          style: const TextStyle(fontSize: 24),
-          decoration: InputDecoration(
-              hintText: 'to:',
-              suffixIcon: _toSearchController.text.isNotEmpty
-                  ? IconButton(
-                      onPressed: () {
-                        setState(() {
-                          predictions = [];
-                          _toSearchController.clear();
-                        });
-                      },
-                      icon: const Icon(Icons.clear_outlined))
-                  : null),
-          onChanged: (value) {
-            if (value.isNotEmpty) {
-              _autoCompleteSearch(value);
-            } else {}
-          },
-        ),
-        ListView.builder(
-            shrinkWrap: true,
-            itemCount: predictions.length,
-            itemBuilder: (context, index) {
-              return ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(Icons.pin_drop_rounded),
-                ),
-                title: Text(predictions[index].description.toString()),
-                onTap: () async {
-                  final placeId = predictions[index].placeId!;
-                  final details = await _googlePlace.details.get(placeId);
-                  if (_detailsResultIsValid(details)) {
-                    if (_originFocusNode.hasFocus) {
-                      setState(() {
-                        _origin = details?.result;
-                        _fromSearchController.text =
-                            predictions[index].description!;
-                        predictions = [];
-                      });
-                    } else {
-                      setState(() {
-                        _dest = details?.result;
-                        _toSearchController.text =
-                            predictions[index].description!;
-                        predictions = [];
-                      });
-                    }
-                  }
-                },
-              );
-            }),
-        Flexible(
-            child: TextButton(
-          onPressed: _fromToFieldsAreNotEmpty() ? _navigateToMapPage() : null,
-          child: const Text('Build the road'),
-        ))
-      ]),
+      body: BlocBuilder<SearchBloc, SearchState>(
+        builder: (context, state) {
+          return Column(children: [
+            TextField(
+              controller: bloc.originSearchController,
+              focusNode: bloc.originFocusNode,
+              style: const TextStyle(fontSize: 24),
+              decoration: InputDecoration(
+                  hintText: 'from:',
+                  suffixIcon: _suffixIcon(bloc, bloc.originSearchController)),
+              onChanged: (value) {
+                if (value.isNotEmpty) {
+                  _callAutoCompleteEvent(bloc, value);
+                } else {}
+              },
+            ),
+            TextField(
+              controller: bloc.destSearchController,
+              focusNode: bloc.destFocusNode,
+              style: const TextStyle(fontSize: 24),
+              decoration: InputDecoration(
+                  hintText: 'to:',
+                  suffixIcon: _suffixIcon(bloc, bloc.destSearchController)),
+              onChanged: (value) {
+                if (value.isNotEmpty) {
+                  _callAutoCompleteEvent(bloc, value);
+                } else {}
+              },
+            ),
+            ListView.builder(
+                shrinkWrap: true,
+                itemCount: bloc.predictions.length,
+                itemBuilder: (context, index) {
+                  return ListTile(
+                    leading: const CircleAvatar(
+                      child: Icon(Icons.pin_drop_rounded),
+                    ),
+                    title: Text(bloc.predictions[index].description.toString()),
+                    onTap: () async {
+                      final TextEditingController controller =
+                          bloc.originFocusNode.hasFocus
+                              ? bloc.originSearchController
+                              : bloc.destSearchController;
+                      await bloc.setSelectedLocation(
+                          index, context.mounted, controller);
+                    },
+                  );
+                }),
+            Flexible(
+                child: TextButton(
+              onPressed: () {
+                _callAddMarkerEvent(context, bloc);
+                _cleanFields(bloc);
+                _navigateToMapPage();
+              },
+              child: const Text('Build the road'),
+            ))
+          ]);
+        },
+      ),
     );
+  }
+
+  void _cleanFields(SearchBloc bloc) {
+    bloc.clearSelectedLocation(bloc.originSearchController);
+    bloc.clearSelectedLocation(bloc.destSearchController);
+  }
+
+  void _callAddMarkerEvent(BuildContext context, SearchBloc bloc) {
+    context.read<MapBloc>().add(AddMarkerEvent(
+          poi: [
+            LatLng(bloc.origin!.geometry!.location!.lat!,
+                bloc.origin!.geometry!.location!.lng!),
+            LatLng(bloc.dest!.geometry!.location!.lat!,
+                bloc.dest!.geometry!.location!.lng!)
+          ],
+        ));
+  }
+
+  IconButton? _suffixIcon(SearchBloc bloc, TextEditingController controller) {
+    return _textFieldIsNotEmpty(controller)
+        ? IconButton(
+            onPressed: () {
+              bloc.clearSelectedLocation(controller);
+            },
+            icon: const Icon(Icons.clear_outlined))
+        : null;
+  }
+
+  bool _textFieldIsNotEmpty(TextEditingController controller) {
+    return controller.text.isNotEmpty;
+  }
+
+  void _callAutoCompleteEvent(SearchBloc bloc, String value) {
+    bloc.add(AutoCompleteEvent(value: value));
   }
 
   _navigateToMapPage() {
     Navigator.push(
-        context,
-        MaterialPageRoute(
-            builder: (context) => MapPage(
-                  initialPosition: LatLng(_origin!.geometry!.location!.lat!,
-                      _origin!.geometry!.location!.lng!),
-                  dest: LatLng(_dest!.geometry!.location!.lat!,
-                      _dest!.geometry!.location!.lng!),
-                )));
-  }
-
-  _autoCompleteSearch(String value) async {
-    var result = await _googlePlace.autocomplete.get(value);
-    if (_predictionsResultIsValid(result)) {
-      setState(() {
-        predictions = result!.predictions!;
-      });
-    }
-  }
-
-  _predictionsResultIsValid(AutocompleteResponse? result) =>
-      result != null && result.predictions != null && mounted;
-
-  _detailsResultIsValid(DetailsResponse? details) =>
-      details != null && details.result != null && mounted;
-
-  bool _fromToFieldsAreNotEmpty() {
-    return _fromSearchController.text.isNotEmpty &&
-        _toSearchController.text.isNotEmpty;
+        context, MaterialPageRoute(builder: (context) => const MapPage()));
   }
 }
+
+class OriginController extends TextEditingController {}
+
+class DestController extends TextEditingController {}
