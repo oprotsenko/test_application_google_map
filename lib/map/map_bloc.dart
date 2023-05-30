@@ -6,88 +6,103 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../.env.dart';
 
-part 'map_event.dart';part 'map_state.dart';
+part 'map_event.dart';
+
+part 'map_state.dart';
 
 class MapBloc extends Bloc<MapEvent, MapState> {
-  MapBloc() : super(ChooseLocationsState()) {
-    on<InitMapPageEvent>(_onInitMapPage);
-    on<AddMarkerEvent>(_onAddMarker);
-    on<CleanMapEvent>(_onCleanMap);
+  MapBloc() : super(MapReadyState(markers: {}, polyLines: {})) {
+    on<AddMarkerEvent>(_onAddMarkerEvent);
+    on<CleanMapEvent>(_onCleanMapEvent);
   }
 
-  Map<PolylineId, Polyline> polyLines = {};
-  Map<String, Marker> markers = {};
+  Map<String, Marker> _markers = {};
+  Map<PolylineId, Polyline> _polyLines = {};
+  final List<LatLng> _polylineCoordinates = [];
 
-  get polylineCoordinates => state.polylineCoordinates;
-
-  set polylineCoordinates(newCoordinates) => newCoordinates;
-
-  get polylinePoints => state.polylinePoints;
-
-  get currentCameraPosition => state.currentCameraPosition;
-
-  _onInitMapPage(InitMapPageEvent event, Emitter<MapState> emit) async {
-    emit(ChooseLocationsState(markers: markers, polyLines: polyLines));
-  }
-
-  _onAddMarker(AddMarkerEvent event, Emitter<MapState> emit) async {
-    if (event.poi.length == 2 && markers.isNotEmpty) {
-      markers.clear();
-    }
-    for (var element in event.poi) {
-      markers = addMarker(LatLng(element.latitude, element.longitude));
-      if (markers.length == 2) {
-        await getPolyline();
+  void _onAddMarkerEvent(AddMarkerEvent event, Emitter<MapState> emit) async {
+    final currentState = state;
+    if (currentState is MapReadyState) {
+      _markers = currentState.markers;
+      _polyLines = currentState.polyLines;
+      if (_isPointsFromSearchPage(event.poi.length)) {
+        _markers.clear();
+        _polyLines.clear();
+        _polylineCoordinates.clear();
       }
-      emit(ChooseLocationsState(markers: markers, polyLines: polyLines));
+      for (var element in event.poi) {
+        _markers.addAll(addMarker(LatLng(element.latitude, element.longitude)));
+        if (_markers.length == 2) {
+          await drawThePath();
+        }
+        emit(MapReadyState(markers: _markers, polyLines: _polyLines));
+      }
     }
   }
 
-  _onCleanMap(CleanMapEvent event, Emitter<MapState> emit) {
-    polyLines.clear();
-    markers.clear();
-    polylineCoordinates = [];
-    emit(CleanMapState());
+  Future<void> drawThePath() async {
+    var res = await getPolyline();
+    _polyLines[res.polylineId] = res;
+    if (res.points.isNotEmpty) {
+      for (var point in res.points) {
+        _polylineCoordinates.add(LatLng(point.latitude, point.longitude));
+      }
+    }
   }
 
-  onMapCreated(GoogleMapController controller) {}
+  bool _isPointsFromSearchPage(int pointsAmount) =>
+      pointsAmount == 2 &&_markers.isNotEmpty;
+
+  void _onCleanMapEvent(CleanMapEvent event, Emitter<MapState> emit) {
+    final currentState = state;
+    if (currentState is MapReadyState) {
+      emit(MapReadyState(markers: event.markers, polyLines: event.polyLines));
+    }
+  }
+
+  void onMapCreated(GoogleMapController controller) {}
 
   Map<String, Marker> addMarker(LatLng poi) {
     Map<String, Marker> newMarkers = {};
-    String id = (markers.isEmpty) ? 'origin' : 'dest';
-    newMarkers.addAll(markers);
-    newMarkers[id] = Marker(
-      markerId: MarkerId(id),
-      icon: BitmapDescriptor.defaultMarker,
-      position: poi,
-    );
+    final currentState = state;
+    if (currentState is MapReadyState) {
+      String id = (currentState.markers.isEmpty) ? 'origin' : 'dest';
+      newMarkers[id] = Marker(
+        markerId: MarkerId(id),
+        icon: BitmapDescriptor.defaultMarker,
+        position: poi,
+      );
+    }
     return newMarkers;
   }
 
-  _addPolyLine() {
-    PolylineId id = const PolylineId('poly');
-    Polyline polyline = Polyline(
-        polylineId: id,
+  Future<Polyline> getPolyline() async {
+    final List<LatLng> polylineCoordinates = [];
+    final currentState = state;
+    if (currentState is MapReadyState) {
+      PolylineResult polylineResult =
+          await currentState.polylinePoints.getRouteBetweenCoordinates(
+        googleApiKey,
+        PointLatLng(currentState.markers['origin']!.position.latitude,
+            currentState.markers['origin']!.position.longitude),
+        PointLatLng(currentState.markers['dest']!.position.latitude,
+            currentState.markers['dest']!.position.longitude),
+        travelMode: TravelMode.driving,
+      );
+      if (polylineResult.points.isNotEmpty) {
+        for (var point in polylineResult.points) {
+          polylineCoordinates.add(LatLng(point.latitude, point.longitude));
+        }
+      }
+    }
+    return _addPolyLine(polylineCoordinates);
+  }
+
+  Polyline _addPolyLine(List<LatLng> polylineCoordinates) {
+    return Polyline(
+        polylineId: const PolylineId('poly'),
         color: Colors.red,
         width: 5,
         points: polylineCoordinates);
-    polyLines[id] = polyline;
-  }
-
-  getPolyline() async {
-    PolylineResult result = await polylinePoints.getRouteBetweenCoordinates(
-      googleApiKey,
-      PointLatLng(markers['origin']!.position.latitude,
-          markers['origin']!.position.longitude),
-      PointLatLng(markers['dest']!.position.latitude,
-          markers['dest']!.position.longitude),
-      travelMode: TravelMode.driving,
-    );
-    if (result.points.isNotEmpty) {
-      for (var point in result.points) {
-        polylineCoordinates.add(LatLng(point.latitude, point.longitude));
-      }
-    }
-    _addPolyLine();
   }
 }

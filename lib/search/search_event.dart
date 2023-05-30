@@ -5,38 +5,26 @@ abstract class SearchEvent extends Equatable {
 }
 
 class InitSearchPageEvent extends SearchEvent {
-  final GooglePlace googlePlace = GooglePlace(googleApiKey);
-  final FocusNode originFocusNode = FocusNode();
-  final FocusNode destFocusNode = FocusNode();
-  final originSearchController = OriginController();
-  final destSearchController = DestController();
-
   @override
-  List<Object?> get props => [
-        googlePlace,
-        originFocusNode,
-        destFocusNode,
-        originSearchController,
-        destSearchController
-      ];
+  List<Object?> get props => [];
 }
 
 class SelectOriginEvent extends SearchEvent {
-  final DetailsResult? origin;
+  final int? index;
 
-  const SelectOriginEvent({this.origin});
+  const SelectOriginEvent({required this.index});
 
   @override
-  List<Object?> get props => [origin];
+  List<Object?> get props => [index];
 }
 
 class SelectDestEvent extends SearchEvent {
-  final DetailsResult? dest;
+  final int? index;
 
-  const SelectDestEvent({this.dest});
+  const SelectDestEvent({required this.index});
 
   @override
-  List<Object?> get props => [dest];
+  List<Object?> get props => [index];
 }
 
 class AutoCompleteEvent extends SearchEvent {

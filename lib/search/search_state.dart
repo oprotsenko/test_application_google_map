@@ -9,39 +9,14 @@ class InitSearchState extends SearchState {
   List<Object> get props => [];
 }
 
-class BuildTheRoadOnTheMapState extends SearchState {
-  final DetailsResult origin;
-  final DetailsResult dest;
-
-  const BuildTheRoadOnTheMapState({required this.origin, required this.dest});
-
-  @override
-  List<Object?> get props => [origin, dest];
-}
-
-class SelectOriginState extends SearchState {
+class SearchPageState extends SearchState {
+  final List<AutocompletePrediction> predictions;
   final DetailsResult? origin;
-
-  const SelectOriginState({this.origin});
-
-  @override
-  List<Object?> get props => [origin];
-}
-
-class SelectDestState extends SearchState {
   final DetailsResult? dest;
 
-  const SelectDestState({this.dest});
+  const SearchPageState({this.predictions = const [], this.origin, this.dest });
 
   @override
-  List<Object?> get props => [dest];
+  List<Object?> get props => [predictions, origin, dest];
 }
 
-class AutoCompleteState extends SearchState {
-  final List<AutocompletePrediction> predictions;
-
-  const AutoCompleteState({required this.predictions});
-
-  @override
-  List<Object?> get props => [predictions];
-}

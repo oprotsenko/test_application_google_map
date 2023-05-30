@@ -4,15 +4,6 @@ abstract class MapEvent extends Equatable {
   const MapEvent();
 }
 
-class InitMapPageEvent extends MapEvent {
-  final CameraPosition currentCameraPosition;
-
-  const InitMapPageEvent({required this.currentCameraPosition});
-
-  @override
-  List<Object> get props => [currentCameraPosition];
-}
-
 class AddMarkerEvent extends MapEvent {
   final List<LatLng> poi;
 
@@ -23,6 +14,9 @@ class AddMarkerEvent extends MapEvent {
 }
 
 class CleanMapEvent extends MapEvent {
+  final Map<String, Marker> markers = {};
+  final Map<PolylineId, Polyline> polyLines = {};
+
   @override
-  List<Object> get props => [];
+  List<Object> get props => [markers, polyLines];
 }

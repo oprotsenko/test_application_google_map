@@ -1,94 +1,86 @@
 import 'package:equatable/equatable.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:google_place/google_place.dart';
 import 'package:test_application_google_map/.env.dart';
-import 'package:test_application_google_map/search/search_screen.dart';
 
 part 'search_event.dart';
 part 'search_state.dart';
 
 class SearchBloc extends Bloc<SearchEvent, SearchState> {
-  SearchBloc() : super(InitSearchState()) {
+  SearchBloc() : super(const SearchPageState()) {
     on<InitSearchPageEvent>(_onInitSearch);
     on<SelectOriginEvent>(_onSelectOriginPoint);
     on<SelectDestEvent>(_onSelectDestPoint);
     on<AutoCompleteEvent>(_onAutoComplete);
   }
 
-  DetailsResult? origin;
-  DetailsResult? dest;
   late final GooglePlace _googlePlace;
-  late final FocusNode originFocusNode;
-  late final FocusNode destFocusNode;
-  late final TextEditingController originSearchController;
-  late final TextEditingController destSearchController;
+
   List<AutocompletePrediction> predictions = [];
 
-  _onInitSearch(InitSearchPageEvent event, Emitter<SearchState> emit) {
-    _googlePlace = event.googlePlace;
-    originFocusNode = event.originFocusNode;
-    destFocusNode = event.destFocusNode;
-    originSearchController = event.originSearchController;
-    destSearchController = event.destSearchController;
-    emit(InitSearchState());
+  void _onInitSearch(InitSearchPageEvent event, Emitter<SearchState> emit) {
+    _googlePlace = GooglePlace(googleApiKey);
+    emit(const SearchPageState());
   }
 
-  _onSelectOriginPoint(SelectOriginEvent event, Emitter<SearchState> emit) {
-    origin = event.origin;
-    emit(SelectOriginState(origin: event.origin));
+  void _onSelectOriginPoint(
+      SelectOriginEvent event, Emitter<SearchState> emit) async {
+    final currentState = state;
+    if (currentState is SearchPageState) {
+      var origin =
+          event.index != null ? await _setSelectedLocation(event.index!) : null;
+      predictions.clear();
+      emit(SearchPageState(
+          predictions: predictions, origin: origin, dest: currentState.dest));
+    }
   }
 
-  _onSelectDestPoint(SelectDestEvent event, Emitter<SearchState> emit) {
-    dest = event.dest;
-    emit(SelectDestState(dest: event.dest));
+  void _onSelectDestPoint(
+      SelectDestEvent event, Emitter<SearchState> emit) async {
+    final currentState = state;
+    if (currentState is SearchPageState) {
+      var dest =
+          event.index != null ? await _setSelectedLocation(event.index!) : null;
+      predictions.clear();
+      emit(SearchPageState(
+          predictions: predictions, origin: currentState.origin, dest: dest));
+    }
   }
 
-  _onAutoComplete(AutoCompleteEvent event, Emitter<SearchState> emit) async {
+  void _onAutoComplete(
+      AutoCompleteEvent event, Emitter<SearchState> emit) async {
     await _autoCompleteSearch(event.value);
-    emit(AutoCompleteState(predictions: predictions));
-  }
-
-  Future<void> setSelectedLocation(
-      int index, bool mounted, TextEditingController controller) async {
-    final placeId = predictions[index].placeId!;
-    final details = await _googlePlace.details.get(placeId);
-    if (_detailsResultIsValid(details, mounted)) {
-      if (!mounted) return;
-      updateTextField(details, index, controller);
+    final currentState = state;
+    if (currentState is SearchPageState) {
+      emit(SearchPageState(
+          predictions: predictions,
+          origin: currentState.origin,
+          dest: currentState.dest));
     }
   }
 
-  void updateTextField(details, int index, TextEditingController controller) {
-    if (controller is OriginController) {
-      add(SelectOriginEvent(origin: details?.result));
-    } else {
-      add(SelectDestEvent(dest: details?.result));
+  Future<DetailsResult?> _setSelectedLocation(int index) async {
+    final currentState = state;
+    if (currentState is SearchPageState) {
+      final placeId = currentState.predictions[index].placeId!;
+      final details = await _googlePlace.details.get(placeId);
+      if (_detailsResultIsValid(details)) {
+        return details?.result;
+      }
     }
-    controller.text = predictions[index].description!;
-    predictions = [];
+    return null;
   }
 
-  clearSelectedLocation(TextEditingController controller) {
-    if (controller is OriginController) {
-      add(const SelectOriginEvent());
-    } else {
-      add(const SelectDestEvent());
-    }
-    predictions = [];
-    controller.clear();
-  }
+  bool _detailsResultIsValid(DetailsResponse? details) =>
+      details != null && details.result != null;
 
-  _detailsResultIsValid(DetailsResponse? details, bool mounted) =>
-      details != null && details.result != null && mounted;
-
-  _autoCompleteSearch(String value) async {
+  Future<void> _autoCompleteSearch(String value) async {
     var result = await _googlePlace.autocomplete.get(value);
     if (_predictionsResultIsValid(result)) {
       predictions = result!.predictions!;
     }
   }
 
-  _predictionsResultIsValid(AutocompleteResponse? result) =>
+  bool _predictionsResultIsValid(AutocompleteResponse? result) =>
       result != null && result.predictions != null;
 }
