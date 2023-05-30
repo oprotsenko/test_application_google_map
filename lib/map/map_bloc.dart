@@ -7,7 +7,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../.env.dart';
 
 part 'map_event.dart';
-
 part 'map_state.dart';
 
 class MapBloc extends Bloc<MapEvent, MapState> {
@@ -19,6 +18,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   Map<String, Marker> _markers = {};
   Map<PolylineId, Polyline> _polyLines = {};
   final List<LatLng> _polylineCoordinates = [];
+  late GoogleMapController _mapController;
 
   void _onAddMarkerEvent(AddMarkerEvent event, Emitter<MapState> emit) async {
     final currentState = state;
@@ -34,10 +34,30 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         _markers.addAll(addMarker(LatLng(element.latitude, element.longitude)));
         if (_markers.length == 2) {
           await drawThePath();
+          _setMapFitToTour(Set.of(_polyLines.values));
+          emit(MapReadyState(markers: _markers, polyLines: _polyLines));
         }
-        emit(MapReadyState(markers: _markers, polyLines: _polyLines));
       }
     }
+  }
+
+  void _setMapFitToTour(Set<Polyline> polyline) {
+    double minLat = polyline.first.points.first.latitude;
+    double minLong = polyline.first.points.first.longitude;
+    double maxLat = polyline.first.points.first.latitude;
+    double maxLong = polyline.first.points.first.longitude;
+    for (var poly in polyline) {
+      for (var point in poly.points) {
+        if(point.latitude < minLat) minLat = point.latitude;
+        if(point.latitude > maxLat) maxLat = point.latitude;
+        if(point.longitude < minLong) minLong = point.longitude;
+        if(point.longitude > maxLong) maxLong = point.longitude;
+      }
+    }
+    _mapController.moveCamera(CameraUpdate.newLatLngBounds(LatLngBounds(
+        southwest: LatLng(minLat, minLong),
+        northeast: LatLng(maxLat,maxLong)
+    ), 20));
   }
 
   Future<void> drawThePath() async {
@@ -51,7 +71,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   }
 
   bool _isPointsFromSearchPage(int pointsAmount) =>
-      pointsAmount == 2 &&_markers.isNotEmpty;
+      pointsAmount == 2 && _markers.isNotEmpty;
 
   void _onCleanMapEvent(CleanMapEvent event, Emitter<MapState> emit) {
     final currentState = state;
@@ -60,7 +80,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     }
   }
 
-  void onMapCreated(GoogleMapController controller) {}
+  void onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+  }
 
   Map<String, Marker> addMarker(LatLng poi) {
     Map<String, Marker> newMarkers = {};
